@@ -23,6 +23,16 @@ class MissingKeyError(RuntimeError):
     pass
 
 
+def _reasoning_effort(model: str) -> str | None:
+    """Thinking models spend many hidden tokens, which is slow and eats free-tier
+    tokens-per-minute. Blog writing doesn't need deep reasoning, so turn it down."""
+    if model.startswith("openai/gpt-oss"):
+        return "low"
+    if model.startswith("gemini") and "flash" in model:
+        return "low"
+    return None
+
+
 def _chat(settings: Settings, temperature: float) -> ChatOpenAI:
     if not settings.llm_api_key:
         raise MissingKeyError(f"No API key set for {PROVIDERS[settings.provider]['label']}.")
@@ -31,6 +41,7 @@ def _chat(settings: Settings, temperature: float) -> ChatOpenAI:
         temperature=temperature,
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
+        reasoning_effort=_reasoning_effort(settings.model),
         max_retries=2,
     )
 

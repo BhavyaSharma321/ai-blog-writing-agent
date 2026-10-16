@@ -87,7 +87,7 @@ Pick the provider and model from the **dropdowns in the sidebar** — the model 
 | Key | Needed for | Get it |
 |---|---|---|
 | `GROQ_API_KEY` | Writing LLM (e.g. `openai/gpt-oss-120b`, `qwen/qwen3.8-27b`) | https://console.groq.com/keys |
-| `GOOGLE_API_KEY` | Image generation + optional writing LLM (`gemini-2.5-flash`) | https://aistudio.google.com/apikey |
+| `GOOGLE_API_KEY` | Image generation + optional writing LLM (e.g. `gemini-3.8-flash`) | https://aistudio.google.com/apikey |
 | `TAVILY_API_KEY` | Optional – web research | https://app.tavily.com |
 
 Keys can come from `.env`, `.streamlit/secrets.toml`, or be typed into the sidebar.

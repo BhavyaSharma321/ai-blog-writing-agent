@@ -108,11 +108,20 @@ def pick(label: str, options: list[str], preferred: str, **kwargs) -> str:
     return st.selectbox(label, options, index=index, **kwargs)
 
 
+def key_input(label: str, name: str) -> str:
+    """Server keys (secrets / .env) stay on the server: never put them into a widget,
+    because widget values are sent to the browser where any visitor could read them."""
+    if server_key := secret(name):
+        st.markdown(f"✅ **{label}** configured")
+        return server_key
+    return st.text_input(label, type="password", placeholder="Paste your key")
+
+
 with st.sidebar:
     st.header("🔑 API keys")
-    groq_key = st.text_input("Groq API key", value=secret("GROQ_API_KEY"), type="password")
-    google_key = st.text_input("Google Gemini API key (text + images)", value=secret("GOOGLE_API_KEY"), type="password")
-    tavily_key = st.text_input("Tavily API key (web research, optional)", value=secret("TAVILY_API_KEY"), type="password")
+    groq_key = key_input("Groq API key", "GROQ_API_KEY")
+    google_key = key_input("Gemini API key", "GOOGLE_API_KEY")
+    tavily_key = key_input("Tavily API key (research, optional)", "TAVILY_API_KEY")
 
     st.header("🧠 Writing model")
     keyed = Settings(groq_api_key=groq_key, google_api_key=google_key)
