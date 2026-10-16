@@ -53,9 +53,12 @@ class Plan(BaseModel):
 # ---------------------------------------------------------------- images
 class ImageSpec(BaseModel):
     after_heading: str = Field(description="Exact text of the '## ' heading the image belongs under.")
+    kind: Literal["diagram", "photo"] = Field(description="diagram = process/architecture/flow; photo = real-world subject.")
     alt: str = Field(description="Short alt text.")
     caption: str = Field(description="One-line caption shown under the image.")
-    prompt: str = Field(description="Detailed prompt for the image generation model.")
+    search_query: str = Field(description="2-4 word stock-photo search query for this image.")
+    mermaid: str = Field(description="Mermaid diagram code if kind is diagram, otherwise an empty string.")
+    prompt: str = Field(description="Detailed prompt for an AI image generation model.")
 
 
 class ImagePlan(BaseModel):

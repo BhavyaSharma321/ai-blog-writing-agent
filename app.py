@@ -12,7 +12,7 @@ from pathlib import Path
 import streamlit as st
 
 from blog_agent import Settings, build_graph, initial_state, run_config
-from blog_agent.config import PROVIDERS
+from blog_agent.config import IMAGE_SOURCES, PROVIDERS
 from blog_agent.llm import list_image_models, list_text_models
 
 st.set_page_config(page_title="AI Blog Writing Agent", page_icon="✍️", layout="wide")
@@ -143,14 +143,22 @@ with st.sidebar:
     target_words = st.slider("Blog length (words)", 600, 4000, 1500, step=100)
     enable_research = st.toggle("Web research (Tavily)", value=True, disabled=not tavily_key)
     recency_days = st.slider("News window (days, open-book topics)", 1, 365, 30)
-    enable_images = st.toggle("Generate images (Gemini)", value=True, disabled=not google_key)
-    max_images = st.slider("Max images", 0, 5, 3, disabled=not (enable_images and google_key))
-    image_model = pick(
-        "Gemini image model",
-        image_models(google_key),
-        secret("GEMINI_IMAGE_MODEL"),
-        disabled=not (enable_images and google_key),
+    enable_images = st.toggle("Add images", value=True)
+    image_source = pick(
+        "Image source",
+        list(IMAGE_SOURCES),
+        (secret("IMAGE_SOURCE") or "auto").lower(),
+        format_func=IMAGE_SOURCES.get,
+        disabled=not enable_images,
+        help="Auto: Mermaid diagrams for technical ideas, openly-licensed Openverse photos for real-world subjects. "
+        "Gemini falls back to these if it fails.",
     )
+    max_images = st.slider("Max images", 0, 5, 3, disabled=not enable_images)
+    image_model = ""
+    if image_source == "gemini":
+        image_model = pick("Gemini image model", image_models(google_key), secret("GEMINI_IMAGE_MODEL"))
+        if not google_key:
+            st.caption("⚠️ Gemini images need a Gemini API key.")
 
 settings = Settings.from_env(
     llm_provider=provider,
@@ -158,6 +166,7 @@ settings = Settings.from_env(
     groq_api_key=groq_key,
     tavily_api_key=tavily_key,
     google_api_key=google_key,
+    image_source=image_source,
     image_model=image_model,
 )
 
@@ -172,7 +181,7 @@ with st.sidebar:
 
 # ---------------------------------------------------------------- main
 st.title("✍️ AI Blog Writing Agent")
-st.caption("Router → Research (Tavily) → Orchestrator → Parallel Workers → Reducer (merge + Gemini images) · built with LangGraph")
+st.caption("Router → Research (Tavily) → Orchestrator → Parallel Workers → Reducer (merge + diagrams/photos) · built with LangGraph")
 
 with st.form("topic_form"):
     topic = st.text_area(
@@ -215,6 +224,9 @@ if submitted:
                         elif node == "worker":
                             sid, md = data["sections"][0]
                             label += f" #{sid}: {md.splitlines()[0].lstrip('# ')}"
+                        elif node == "generate_images":
+                            made = [i["backend"] for i in data.get("image_specs", []) if i.get("path")]
+                            label += f" → {len(made)} image(s)" + (f" ({', '.join(sorted(set(made)))})" if made else "")
                         st.write(label)
                         if not namespace:
                             result.update(data)
@@ -223,13 +235,14 @@ if submitted:
                 status.update(label="Something went wrong", state="error")
                 st.exception(exc)
                 result = {}
-        failed = [i for i in result.get("image_specs") or [] if i.get("error")]
+        specs = result.get("image_specs") or []
+        if settings.image_source == "gemini" and any(i.get("backend") not in (None, "gemini") for i in specs):
+            st.info("Gemini couldn't make some images (free keys have no image quota), so free diagrams/photos were used instead.")
+        failed = [i for i in specs if i.get("error")]
         if failed:
-            reason = failed[0]["error"]
-            hint = " Gemini image models need billing enabled on your Google AI Studio project." if "429" in reason or "RESOURCE_EXHAUSTED" in reason else ""
             st.warning(
-                f"{len(failed)} image(s) could not be generated, so the blog has no images there.{hint}"
-                f"\n\nError: {reason[:200]}"
+                f"{len(failed)} image(s) could not be made, so the blog has no image there."
+                f"\n\nError: {failed[0]['error'][:300]}"
             )
         if result.get("final"):
             result["topic"] = topic

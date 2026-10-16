@@ -36,6 +36,12 @@ PROVIDERS = {
     },
 }
 IMAGE_MODELS = ["gemini-2.5-flash-image"]
+IMAGE_SOURCES = {
+    "auto": "Auto: diagrams + photos (free)",
+    "mermaid": "Mermaid diagrams only (free)",
+    "openverse": "Openverse photos only (free)",
+    "gemini": "Gemini AI images (needs billing)",
+}
 DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0]
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "outputs"
 
@@ -52,6 +58,7 @@ class Settings:
     groq_api_key: str = ""
     tavily_api_key: str = ""
     google_api_key: str = ""
+    image_source: str = "auto"  # see IMAGE_SOURCES
     image_model: str = DEFAULT_IMAGE_MODEL
     output_dir: str = str(DEFAULT_OUTPUT_DIR)
 
@@ -63,6 +70,7 @@ class Settings:
             groq_api_key=_env("GROQ_API_KEY"),
             tavily_api_key=_env("TAVILY_API_KEY"),
             google_api_key=_env("GOOGLE_API_KEY") or _env("GEMINI_API_KEY"),
+            image_source=_env("IMAGE_SOURCE", "auto").lower(),
             image_model=_env("GEMINI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
             output_dir=_env("OUTPUT_DIR", str(DEFAULT_OUTPUT_DIR)),
         )
@@ -97,7 +105,8 @@ class Settings:
 
     @property
     def can_make_images(self) -> bool:
-        return bool(self.google_api_key)
+        # Mermaid and Openverse need no key; only Gemini does.
+        return self.image_source != "gemini" or bool(self.google_api_key)
 
 
 def get_settings(config: RunnableConfig | None) -> Settings:

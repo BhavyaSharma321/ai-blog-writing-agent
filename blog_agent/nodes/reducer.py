@@ -12,9 +12,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-from blog_agent.config import Settings, get_settings
+from blog_agent import images
+from blog_agent.config import get_settings
 from blog_agent.llm import structured
-from blog_agent.prompts import IMAGE_PLANNER_SYSTEM
+from blog_agent.prompts import IMAGE_KIND_RULES, IMAGE_PLANNER_SYSTEM
 from blog_agent.schemas import ImagePlan, State
 from blog_agent.utils import insert_after_heading, new_run_dir, slugify
 
@@ -53,7 +54,12 @@ def decide_images_node(state: State, config: RunnableConfig) -> dict:
     try:
         image_plan: ImagePlan = structured(settings, ImagePlan).invoke(
             [
-                SystemMessage(IMAGE_PLANNER_SYSTEM.format(max_images=max_images)),
+                SystemMessage(
+                    IMAGE_PLANNER_SYSTEM.format(
+                        max_images=max_images,
+                        kind_rule=IMAGE_KIND_RULES.get(settings.image_source, IMAGE_KIND_RULES["auto"]),
+                    )
+                ),
                 HumanMessage("Headings:\n" + "\n".join(f"- {h}" for h in headings) + f"\n\nBlog:\n{md[:12000]}"),
             ]
         )
@@ -75,24 +81,6 @@ def decide_images_node(state: State, config: RunnableConfig) -> dict:
 
 
 # ---------------------------------------------------------------- 3. generate & place
-def generate_image(settings: Settings, prompt: str) -> tuple[bytes, str]:
-    """Returns (image_bytes, mime_type) from Gemini."""
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=settings.google_api_key)
-    response = client.models.generate_content(
-        model=settings.image_model,
-        contents=prompt,
-        config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
-    )
-    for candidate in response.candidates or []:
-        for part in (candidate.content.parts if candidate.content else None) or []:
-            if part.inline_data and part.inline_data.data:
-                return part.inline_data.data, part.inline_data.mime_type or "image/png"
-    raise RuntimeError("Gemini returned no image data.")
-
-
 def generate_images_node(state: State, config: RunnableConfig) -> dict:
     settings = get_settings(config)
     md = state["md_with_placeholders"]
@@ -101,24 +89,27 @@ def generate_images_node(state: State, config: RunnableConfig) -> dict:
 
     def work(spec: dict) -> dict:
         try:
-            data, mime = generate_image(settings, spec["prompt"])
-            ext = ".jpg" if "jpeg" in mime else ".png"
+            image = images.make_image(settings, spec, used_photo_ids)
+            ext = {"image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}.get(image.mime, ".png")
             path = run_dir / "images" / f"{spec['filename']}{ext}"
-            path.write_bytes(data)
-            return {**spec, "path": f"images/{path.name}", "error": None}
+            path.write_bytes(image.data)
+            return {**spec, "path": f"images/{path.name}", "backend": image.backend, "credit": image.credit, "error": None}
         except Exception as exc:
             log.warning("Image generation failed for %s: %s", spec["placeholder"], exc)
-            return {**spec, "path": None, "error": str(exc)[:300]}
+            return {**spec, "path": None, "backend": None, "credit": "", "error": str(exc)[:500]}
 
+    used_photo_ids: set[str] = set()  # no duplicate photos within one blog
     with ThreadPoolExecutor(max_workers=3) as pool:
         results = list(pool.map(work, specs))
 
     for r in results:
-        replacement = f"![{r['alt']}]({r['path']})\n*{r['caption']}*" if r["path"] else ""
+        caption = f"*{r['caption']}*" + (f"  \n{r['credit']}" if r["credit"] else "")
+        replacement = f"![{r['alt']}]({r['path']})\n{caption}" if r["path"] else ""
         md = md.replace(r["placeholder"], replacement)
     md = re.sub(r"\n{3,}", "\n\n", md)
 
     (run_dir / "blog.md").write_text(md, encoding="utf-8")
+    (run_dir / "images.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     return {"final": md, "image_specs": results}
 
 

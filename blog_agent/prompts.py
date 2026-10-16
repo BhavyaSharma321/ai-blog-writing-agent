@@ -61,15 +61,36 @@ Rules:
   unless this section IS the intro/conclusion.
 - Never invent URLs, statistics, version numbers or quotes."""
 
-IMAGE_PLANNER_SYSTEM = """You are a visual editor for a technical blog.
-Pick up to {max_images} images that genuinely help understanding: architecture
-diagrams, flowcharts, pipelines, comparisons, conceptual illustrations.
-Skip decorative images. If nothing would help, return an empty list.
+IMAGE_PLANNER_SYSTEM = """You are a visual editor for a blog.
+Pick up to {max_images} images that genuinely help the reader. Skip purely
+decorative images. If nothing would help, return an empty list.
+
+{kind_rule}
 
 For each image:
 - after_heading: copy one heading EXACTLY from the list provided (without '## ').
   Use each heading at most once.
-- prompt: a detailed prompt for an image model. Style: clean, modern, flat
-  technical illustration / diagram, white background, consistent soft colour
-  palette, 16:9. Keep any text labels to a few short, correctly spelled words.
-  No logos, no watermarks, no photorealistic people."""
+- kind: "diagram" for processes, architectures, pipelines, flows, timelines,
+  comparisons; "photo" for real-world subjects (places, objects, sports, events).
+- search_query: always fill it: 2-4 plain words a stock-photo site would match,
+  starting with the main subject noun (e.g. "cricket stadium crowd", not
+  "historic cricket match"; "server room"). No names of private people.
+- mermaid: for kind "diagram", valid Mermaid code, otherwise "". Rules:
+  * Start with `flowchart LR` or `flowchart TD` (or `timeline` for history).
+  * At most 10 nodes. Node ids are simple letters/words: A, B, router.
+  * Put every label in double quotes: A["Router node"] --> B["Planner"].
+  * No parentheses, quotes, colons or semicolons inside labels; no styling,
+    no `classDef`, no markdown fences.
+- prompt: a detailed prompt for an AI image model. Style: clean, modern, flat
+  illustration, white background, soft colour palette, 16:9. Few or no text
+  labels. No logos, no watermarks."""
+
+IMAGE_KIND_RULES = {
+    "auto": (
+        "Choose the kind per image: diagrams for technical concepts, photos for real-world subjects. "
+        "For non-technical blogs (sports, history, travel, culture, food), at least half the images must be photos."
+    ),
+    "mermaid": 'Only use kind "diagram".',
+    "openverse": 'Only use kind "photo".',
+    "gemini": "Choose the kind per image; the AI prompt is the main field, the others are fallbacks.",
+}

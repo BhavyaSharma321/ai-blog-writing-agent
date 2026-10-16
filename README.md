@@ -33,7 +33,7 @@ flowchart LR
 | 5 | **Reducer** (sub-graph) | **Merge** sections in order + add References → **Decide images** (LLM picks where diagrams help and writes prompts, inserts `[[IMAGE_n]]` placeholders) → **Generate images** with Gemini, save to `outputs/<run>/images/`, replace placeholders with real paths. | LangGraph sub-graph, Gemini |
 | UI | **Streamlit** | Live step-by-step progress, rendered blog with images, plan/evidence inspector, Markdown + ZIP downloads, past-blog history. | Streamlit |
 
-Everything degrades gracefully: no Tavily key → closed-book writing; no Gemini key → blog without images.
+Images are free by default: **Mermaid** diagrams (mermaid.ink) for technical ideas and openly-licensed **Openverse** photos (with attribution) for real-world subjects. Gemini AI images are optional and fall back to these. No Tavily key → closed-book writing.
 
 ---
 
@@ -87,7 +87,7 @@ Pick the provider and model from the **dropdowns in the sidebar** — the model 
 | Key | Needed for | Get it |
 |---|---|---|
 | `GROQ_API_KEY` | Writing LLM (e.g. `openai/gpt-oss-120b`, `qwen/qwen3.8-27b`) | https://console.groq.com/keys |
-| `GOOGLE_API_KEY` | Image generation + optional writing LLM (e.g. `gemini-3.8-flash`) | https://aistudio.google.com/apikey |
+| `GOOGLE_API_KEY` | Optional: Gemini AI images (needs billing) + writing LLM (e.g. `gemini-3.8-flash`) | https://aistudio.google.com/apikey |
 | `TAVILY_API_KEY` | Optional – web research | https://app.tavily.com |
 
 Keys can come from `.env`, `.streamlit/secrets.toml`, or be typed into the sidebar.
