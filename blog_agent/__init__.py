@@ -6,6 +6,6 @@ Pipeline (LangGraph):
 """
 
 from blog_agent.config import Settings
-from blog_agent.graph import build_graph, initial_state, run
+from blog_agent.graph import build_graph, initial_state, run, run_config
 
-__all__ = ["Settings", "build_graph", "initial_state", "run"]
+__all__ = ["Settings", "build_graph", "initial_state", "run", "run_config"]

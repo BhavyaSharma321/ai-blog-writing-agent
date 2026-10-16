@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from blog_agent import Settings, build_graph, initial_state
+from blog_agent import Settings, build_graph, initial_state, run_config
 
 
 def main() -> None:
@@ -31,7 +31,7 @@ def main() -> None:
 
     final: dict = {}
     for namespace, update in build_graph().stream(
-        state, {"configurable": {"settings": settings}}, stream_mode="updates", subgraphs=True
+        state, run_config(settings), stream_mode="updates", subgraphs=True
     ):
         for node, data in update.items():
             prefix = "  reducer > " if namespace else ""

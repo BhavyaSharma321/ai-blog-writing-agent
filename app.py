@@ -11,8 +11,9 @@ from pathlib import Path
 
 import streamlit as st
 
-from blog_agent import Settings, build_graph, initial_state
-from blog_agent.config import DEFAULT_IMAGE_MODEL, PROVIDERS
+from blog_agent import Settings, build_graph, initial_state, run_config
+from blog_agent.config import PROVIDERS
+from blog_agent.llm import list_image_models, list_text_models
 
 st.set_page_config(page_title="AI Blog Writing Agent", page_icon="✍️", layout="wide")
 
@@ -92,27 +93,42 @@ def past_runs(output_dir: str) -> list[Path]:
 
 
 # ---------------------------------------------------------------- sidebar
-PROVIDER_LABELS = {"groq": "Groq", "gemini": "Google Gemini", "openai": "OpenAI"}
+@st.cache_data(ttl=3600, show_spinner="Fetching available models…")
+def text_models(provider: str, api_key: str) -> list[str]:
+    return list_text_models(provider, api_key)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def image_models(api_key: str) -> list[str]:
+    return list_image_models(api_key)
+
+
+def pick(label: str, options: list[str], preferred: str, **kwargs) -> str:
+    index = options.index(preferred) if preferred in options else 0
+    return st.selectbox(label, options, index=index, **kwargs)
+
 
 with st.sidebar:
     st.header("🔑 API keys")
     groq_key = st.text_input("Groq API key", value=secret("GROQ_API_KEY"), type="password")
     google_key = st.text_input("Google Gemini API key (text + images)", value=secret("GOOGLE_API_KEY"), type="password")
-    openai_key = st.text_input("OpenAI API key (optional)", value=secret("OPENAI_API_KEY"), type="password")
     tavily_key = st.text_input("Tavily API key (web research, optional)", value=secret("TAVILY_API_KEY"), type="password")
 
     st.header("🧠 Writing model")
-    keyed = Settings(groq_api_key=groq_key, google_api_key=google_key, openai_api_key=openai_key)
-    default_provider = (secret("LLM_PROVIDER") or "").lower()
-    if default_provider not in PROVIDERS:
-        default_provider = keyed.provider
-    provider = st.selectbox(
+    keyed = Settings(groq_api_key=groq_key, google_api_key=google_key)
+    provider = pick(
         "LLM provider",
         list(PROVIDERS),
-        index=list(PROVIDERS).index(default_provider),
-        format_func=PROVIDER_LABELS.get,
+        (secret("LLM_PROVIDER") or keyed.provider).lower(),
+        format_func=lambda p: PROVIDERS[p]["label"],
     )
-    llm_model = st.text_input("Model", value=secret("LLM_MODEL") or PROVIDERS[provider]["model"], key=f"model_{provider}")
+    llm_model = pick(
+        "Model",
+        text_models(provider, keyed.key_for(provider)),
+        secret("LLM_MODEL"),
+        key=f"model_{provider}",
+        help="First options are recommended; the rest are fetched live from your account.",
+    )
 
     st.header("⚙️ Options")
     target_words = st.slider("Blog length (words)", 600, 4000, 1500, step=100)
@@ -120,13 +136,17 @@ with st.sidebar:
     recency_days = st.slider("News window (days, open-book topics)", 1, 365, 30)
     enable_images = st.toggle("Generate images (Gemini)", value=True, disabled=not google_key)
     max_images = st.slider("Max images", 0, 5, 3, disabled=not (enable_images and google_key))
-    image_model = st.text_input("Gemini image model", value=secret("GEMINI_IMAGE_MODEL") or DEFAULT_IMAGE_MODEL)
+    image_model = pick(
+        "Gemini image model",
+        image_models(google_key),
+        secret("GEMINI_IMAGE_MODEL"),
+        disabled=not (enable_images and google_key),
+    )
 
 settings = Settings.from_env(
     llm_provider=provider,
     llm_model=llm_model,
     groq_api_key=groq_key,
-    openai_api_key=openai_key,
     tavily_api_key=tavily_key,
     google_api_key=google_key,
     image_model=image_model,
@@ -157,7 +177,7 @@ if submitted:
     if not topic.strip():
         st.warning("Please enter a topic.")
     elif not settings.llm_api_key:
-        st.error(f"Add an API key for {PROVIDER_LABELS[settings.provider]} in the sidebar (or Streamlit secrets).")
+        st.error(f"Add an API key for {PROVIDERS[settings.provider]['label']} in the sidebar (or Streamlit secrets).")
     else:
         state = initial_state(
             topic,
@@ -171,7 +191,7 @@ if submitted:
         with st.status("Agent is working…", expanded=True) as status:
             try:
                 stream = get_graph().stream(
-                    state, {"configurable": {"settings": settings}}, stream_mode="updates", subgraphs=True
+                    state, run_config(settings), stream_mode="updates", subgraphs=True
                 )
                 for namespace, update in stream:
                     for node, data in update.items():
@@ -194,6 +214,14 @@ if submitted:
                 status.update(label="Something went wrong", state="error")
                 st.exception(exc)
                 result = {}
+        failed = [i for i in result.get("image_specs") or [] if i.get("error")]
+        if failed:
+            reason = failed[0]["error"]
+            hint = " Gemini image models need billing enabled on your Google AI Studio project." if "429" in reason or "RESOURCE_EXHAUSTED" in reason else ""
+            st.warning(
+                f"{len(failed)} image(s) could not be generated, so the blog has no images there.{hint}"
+                f"\n\nError: {reason[:200]}"
+            )
         if result.get("final"):
             result["topic"] = topic
             if result.get("plan") is not None:

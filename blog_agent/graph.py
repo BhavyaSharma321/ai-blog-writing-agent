@@ -54,9 +54,10 @@ def initial_state(
     }
 
 
+def run_config(settings: Settings) -> dict:
+    """LangGraph run config. Groq's free tier has a low tokens/minute cap, so fewer parallel workers."""
+    return {"configurable": {"settings": settings}, "max_concurrency": 2 if settings.provider == "groq" else 4}
+
+
 def run(topic: str, settings: Settings | None = None, **options) -> State:
-    graph = build_graph()
-    return graph.invoke(
-        initial_state(topic, **options),
-        {"configurable": {"settings": settings or Settings.from_env()}},
-    )
+    return build_graph().invoke(initial_state(topic, **options), run_config(settings or Settings.from_env()))

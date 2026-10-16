@@ -29,7 +29,7 @@ def merge_node(state: State, config: RunnableConfig) -> dict:
     body = "\n\n".join(md.strip() for _, md in sections)
     md = f"# {plan.blog_title}\n\n{body}\n"
 
-    cited = [e for e in state.get("evidence", []) if e["url"] in md]
+    cited = list({e["url"].rstrip("/"): e for e in state.get("evidence", []) if e["url"] in md}.values())
     if cited:
         md += "\n## References\n\n" + "\n".join(f"- [{e['title']}]({e['url']})" for e in cited) + "\n"
 

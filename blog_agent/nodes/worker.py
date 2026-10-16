@@ -45,11 +45,12 @@ def worker_node(payload: dict, config: RunnableConfig) -> dict:
         f"Goal: {task['goal']}\n"
         "Must cover:\n" + "\n".join(f"- {b}" for b in task["bullets"])
     )
-    if evidence:
-        brief += f"\n\nEvidence:\n{format_evidence(evidence)}"
+    if task["requires_citations"] and evidence:
+        # Short snippets keep each worker's prompt small (free-tier token limits).
+        brief += f"\n\nEvidence:\n{format_evidence(evidence, snippet_chars=300)}"
 
     response = get_llm(settings, temperature=0.5).invoke([SystemMessage(system), HumanMessage(brief)])
-    md = response.content.strip()
+    md = "\n".join(line.rstrip() for line in response.content.strip().splitlines())
     if not md.startswith("## "):
         md = f"## {task['title']}\n\n{md}"
     return {"sections": [(task["id"], md)]}

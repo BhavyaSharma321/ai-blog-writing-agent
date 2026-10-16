@@ -28,8 +28,8 @@ ORCHESTRATOR_SYSTEM = """You are the senior editor and planner of a technical bl
 Create a precise plan that parallel writers will follow independently.
 
 Rules:
-- 5-8 sections. Section 1 is a hook-style introduction; the last is a conclusion
-  with key takeaways. Middle sections build on each other logically.
+- 5-8 sections. Section 1 is an engaging introduction with a descriptive title
+  (never literally "Hook" or "Introduction"); the last is a conclusion with key takeaways. Middle sections build on each other logically.
 - Each section needs a clear goal and 3-6 concrete bullets (no vague bullets).
 - Section target_words should add up to roughly {target_words} words in total.
 - Set requires_code=true where a short code snippet genuinely helps (tutorials,
