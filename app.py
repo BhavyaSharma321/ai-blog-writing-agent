@@ -46,6 +46,26 @@ def get_graph():
     return build_graph()
 
 
+def explain_error(exc: Exception, settings: Settings) -> str:
+    """Turn provider errors into something a user can act on."""
+    text = str(exc)
+    provider = PROVIDERS[settings.provider]["label"]
+    other = "Groq" if settings.provider == "gemini" else "Google Gemini"
+    if "403" in text or "denied access" in text.lower() or "PermissionDenied" in type(exc).__name__:
+        return (
+            f"**{provider} refused the request (403 – access denied).** Your API key's project isn't allowed "
+            f"to use `{settings.model}`. Switch the LLM provider to **{other}** in the sidebar, or create a new "
+            "key in a new project at aistudio.google.com."
+        )
+    if "404" in text or "no longer available" in text or "not found" in text.lower():
+        return f"**The model `{settings.model}` isn't available on your {provider} account.** Pick another model in the sidebar."
+    if "429" in text or "rate limit" in text.lower() or "RateLimit" in type(exc).__name__:
+        return f"**{provider} rate limit reached** (free tier). Wait a minute and try again, or switch to **{other}**."
+    if "401" in text or "invalid api key" in text.lower() or "Authentication" in type(exc).__name__:
+        return f"**Your {provider} API key is invalid.** Check the key in your Streamlit secrets / .env."
+    return f"**Something went wrong:** {text[:300]}"
+
+
 def render_blog(md: str, base_dir: Path) -> None:
     """st.markdown can't show local image files, so split them out and use st.image."""
     pos = 0
@@ -232,8 +252,10 @@ if submitted:
                             result.update(data)
                 status.update(label="Blog ready!", state="complete", expanded=False)
             except Exception as exc:
-                status.update(label="Something went wrong", state="error")
-                st.exception(exc)
+                status.update(label="Something went wrong", state="error", expanded=False)
+                st.error(explain_error(exc, settings))
+                with st.expander("Technical details"):
+                    st.exception(exc)
                 result = {}
         specs = result.get("image_specs") or []
         if settings.image_source == "gemini" and any(i.get("backend") not in (None, "gemini") for i in specs):
