@@ -35,7 +35,7 @@ def build_graph():
 def initial_state(
     topic: str,
     *,
-    target_words: int = 1500,
+    target_words: int = 1000,
     recency_days: int = 30,
     enable_research: bool = True,
     enable_images: bool = True,

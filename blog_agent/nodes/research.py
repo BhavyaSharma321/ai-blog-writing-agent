@@ -1,24 +1,21 @@
-"""Research node: Tavily web search -> LLM-curated Evidence Pack."""
+"""Research node: Tavily web search -> ranked, de-duplicated Evidence Pack."""
 
 from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from tavily import TavilyClient
 
 from blog_agent.config import Settings, get_settings
-from blog_agent.llm import structured
-from blog_agent.prompts import RESEARCH_SYSTEM
-from blog_agent.schemas import EvidencePack, State
-from blog_agent.utils import format_evidence
+from blog_agent.schemas import State
 
 log = logging.getLogger(__name__)
 
 RESULTS_PER_QUERY = 5
-MAX_EVIDENCE = 15
+MAX_EVIDENCE = 8
+SNIPPET_CHARS = 400
 
 
 def _search(client: TavilyClient, query: str, mode: str, recency_days: int) -> list[dict]:
@@ -36,6 +33,7 @@ def _search(client: TavilyClient, query: str, mode: str, recency_days: int) -> l
             "url": r.get("url", ""),
             "snippet": (r.get("content") or "").strip(),
             "published_at": r.get("published_date"),
+            "score": r.get("score"),
         }
         for r in results
         if r.get("url")
@@ -57,26 +55,10 @@ def search_all(settings: Settings, queries: list[str], mode: str, recency_days: 
 
 
 def research_node(state: State, config: RunnableConfig) -> dict:
+    # Deterministic, no LLM call: Tavily already ranks results by relevance, and skipping an
+    # LLM "curation" pass saves ~6k tokens (most of a free Groq minute) per blog.
     settings = get_settings(config)
     raw = search_all(settings, state.get("queries", []), state["mode"], state.get("recency_days", 30))
-    if not raw:
-        return {"evidence": []}
-
-    try:
-        pack: EvidencePack = structured(settings, EvidencePack).invoke(
-            [
-                SystemMessage(RESEARCH_SYSTEM.format(max_items=MAX_EVIDENCE)),
-                HumanMessage(
-                    f"Topic: {state['topic']}\nToday's date: {state['as_of']}\n\n"
-                    f"Raw search results:\n{format_evidence(raw, snippet_chars=700)}"
-                ),
-            ]
-        )
-        # Guard against hallucinated URLs: keep only URLs that Tavily actually returned.
-        known = {r["url"].rstrip("/") for r in raw}
-        evidence = [e.model_dump() for e in pack.evidence if e.url.rstrip("/") in known]
-    except Exception as exc:
-        log.warning("Evidence curation failed, using raw results: %s", exc)
-        evidence = []
-
-    return {"evidence": (evidence or raw)[:MAX_EVIDENCE]}
+    raw.sort(key=lambda r: r.get("score") or 0, reverse=True)
+    evidence = [{**r, "snippet": r["snippet"][:SNIPPET_CHARS]} for r in raw[:MAX_EVIDENCE]]
+    return {"evidence": evidence}

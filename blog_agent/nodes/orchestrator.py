@@ -20,12 +20,12 @@ def orchestrator_node(state: State, config: RunnableConfig) -> dict:
         [
             SystemMessage(
                 ORCHESTRATOR_SYSTEM.format(
-                    target_words=state.get("target_words", 1500),
+                    target_words=state.get("target_words", 1000),
                     mode=state.get("mode", "closed_book"),
                     as_of=state["as_of"],
                 )
             ),
-            HumanMessage(f"Topic: {state['topic']}\n\nEvidence:\n{format_evidence(evidence)}"),
+            HumanMessage(f"Topic: {state['topic']}\n\nEvidence:\n{format_evidence(evidence, snippet_chars=300)}"),
         ]
     )
 

@@ -11,3 +11,4 @@ outputs/
 .env.txt
 .env.*
 !.env.example
+resume/

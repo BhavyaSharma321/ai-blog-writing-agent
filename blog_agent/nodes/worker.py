@@ -47,7 +47,7 @@ def worker_node(payload: dict, config: RunnableConfig) -> dict:
     )
     if task["requires_citations"] and evidence:
         # Short snippets keep each worker's prompt small (free-tier token limits).
-        brief += f"\n\nEvidence:\n{format_evidence(evidence, snippet_chars=300)}"
+        brief += f"\n\nEvidence:\n{format_evidence(evidence, snippet_chars=200)}"
 
     response = get_llm(settings, temperature=0.5).invoke([SystemMessage(system), HumanMessage(brief)])
     md = "\n".join(line.rstrip() for line in response.content.strip().splitlines())

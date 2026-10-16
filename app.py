@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+import time
 import zipfile
 from pathlib import Path
 
@@ -59,6 +60,14 @@ def explain_error(exc: Exception, settings: Settings) -> str:
         )
     if "404" in text or "no longer available" in text or "not found" in text.lower():
         return f"**The model `{settings.model}` isn't available on your {provider} account.** Pick another model in the sidebar."
+    if "per day" in text.lower() or "(tpd)" in text.lower() or "(rpd)" in text.lower():
+        wait = re.search(r"try again in ([\w.]+)", text)
+        return (
+            f"**Daily free limit used up for `{settings.model}` on {provider}.**"
+            + (f" It resets in about {wait.group(1)}." if wait else "")
+            + " Each model has its own daily quota, so pick a **different model** in the sidebar"
+            " (e.g. `openai/gpt-oss-20b` or `qwen/qwen3.8-27b`) to keep going now."
+        )
     if "429" in text or "rate limit" in text.lower() or "RateLimit" in type(exc).__name__:
         return f"**{provider} rate limit reached** (free tier). Wait a minute and try again, or switch to **{other}**."
     if "401" in text or "invalid api key" in text.lower() or "Authentication" in type(exc).__name__:
@@ -160,7 +169,7 @@ with st.sidebar:
     )
 
     st.header("⚙️ Options")
-    target_words = st.slider("Blog length (words)", 600, 4000, 1500, step=100)
+    target_words = st.slider("Blog length (words)", 500, 3000, 1000, step=100)
     enable_research = st.toggle("Web research (Tavily)", value=True, disabled=not tavily_key)
     recency_days = st.slider("News window (days, open-book topics)", 1, 365, 30)
     enable_images = st.toggle("Add images", value=True)
@@ -226,7 +235,16 @@ if submitted:
             max_images=max_images,
         )
         result: dict = {}
+        started = time.time()
         with st.status("Agent is working…", expanded=True) as status:
+            if settings.provider == "groq":
+                st.caption(
+                    "Free Groq tier allows 8,000 tokens/minute, so a blog takes 1–3 minutes. If a step pauses, "
+                    "the agent is waiting for the limit to reset. Please don't click Generate again or refresh."
+                )
+            now_running = st.empty()
+            now_running.markdown("⏳ *Router: deciding if research is needed…*")
+            sections_total, sections_done = 0, 0
             try:
                 stream = get_graph().stream(
                     state, run_config(settings), stream_mode="updates", subgraphs=True
@@ -240,17 +258,29 @@ if submitted:
                         elif node == "research":
                             label += f" → {len(data.get('evidence', []))} sources"
                         elif node == "orchestrator":
-                            label += f" → {len(data['plan'].tasks)} sections"
+                            sections_total = len(data["plan"].tasks)
+                            label += f" → {sections_total} sections"
                         elif node == "worker":
+                            sections_done += 1
                             sid, md = data["sections"][0]
                             label += f" #{sid}: {md.splitlines()[0].lstrip('# ')}"
                         elif node == "generate_images":
                             made = [i["backend"] for i in data.get("image_specs", []) if i.get("path")]
                             label += f" → {len(made)} image(s)" + (f" ({', '.join(sorted(set(made)))})" if made else "")
-                        st.write(label)
+                        st.write(f"{label}  `{time.time() - started:.0f}s`")
+                        next_step = {
+                            "router": "Researching / planning…" if data.get("needs_research") else "Planning sections…",
+                            "research": "Planning sections…",
+                            "orchestrator": f"Writing {sections_total} sections in parallel…",
+                            "worker": f"Writing sections… ({sections_done}/{sections_total} done)",
+                            "merge": "Choosing images…",
+                            "decide_images": "Making diagrams / fetching photos…",
+                        }.get(node)
+                        now_running.markdown(f"⏳ *{next_step}*" if next_step else "")
                         if not namespace:
                             result.update(data)
-                status.update(label="Blog ready!", state="complete", expanded=False)
+                now_running.empty()
+                status.update(label=f"Blog ready in {time.time() - started:.0f}s!", state="complete", expanded=False)
             except Exception as exc:
                 status.update(label="Something went wrong", state="error", expanded=False)
                 st.error(explain_error(exc, settings))

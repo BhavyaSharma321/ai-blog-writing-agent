@@ -6,7 +6,7 @@ import logging
 from typing import TypeVar
 
 from langchain_openai import ChatOpenAI
-from openai import OpenAI, RateLimitError
+from openai import BadRequestError, OpenAI, RateLimitError
 from pydantic import BaseModel
 
 from blog_agent.config import IMAGE_MODELS, PROVIDERS, Settings
@@ -46,10 +46,20 @@ def _chat(settings: Settings, temperature: float) -> ChatOpenAI:
     )
 
 
+def _is_retryable(exc: BaseException) -> bool:
+    """Retry per-minute rate limits (they reset quickly) and malformed tool-call JSON
+    (Groq's `tool_use_failed`, a random model slip). Daily limits (TPD/RPD) don't reset
+    soon: retrying would just hang the app for minutes, so fail fast with a clear error."""
+    text = str(exc).lower()
+    if isinstance(exc, BadRequestError):
+        return "tool_use_failed" in text
+    return isinstance(exc, RateLimitError) and "per day" not in text and "(tpd)" not in text and "(rpd)" not in text
+
+
 def _with_rate_limit_retry(runnable):
     # Free tiers (e.g. Groq: 8k tokens/min) reset per minute, so back off for up to ~1 minute.
     return runnable.with_retry(
-        retry_if_exception_type=(RateLimitError,),
+        retry_if_exception_type=_is_retryable,
         exponential_jitter_params={"initial": 4, "max": 40},
         stop_after_attempt=8,
     )

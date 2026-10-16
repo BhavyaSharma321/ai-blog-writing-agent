@@ -28,7 +28,7 @@ ORCHESTRATOR_SYSTEM = """You are the senior editor and planner of a technical bl
 Create a precise plan that parallel writers will follow independently.
 
 Rules:
-- 5-8 sections. Section 1 is an engaging introduction with a descriptive title
+- 4-6 sections. Section 1 is an engaging introduction with a descriptive title
   (never literally "Hook" or "Introduction"); the last is a conclusion with key takeaways. Middle sections build on each other logically.
 - Each section needs a clear goal and 3-6 concrete bullets (no vague bullets).
 - Section target_words should add up to roughly {target_words} words in total.
@@ -78,9 +78,9 @@ For each image:
 - mermaid: for kind "diagram", valid Mermaid code, otherwise "". Rules:
   * Start with `flowchart LR` or `flowchart TD` (or `timeline` for history).
   * At most 10 nodes. Node ids are simple letters/words: A, B, router.
-  * Put every label in double quotes: A["Router node"] --> B["Planner"].
-  * No parentheses, quotes, colons or semicolons inside labels; no styling,
-    no `classDef`, no markdown fences.
+  * Write labels in square brackets WITHOUT quotes: A[Router node] --> B[Planner].
+  * Use only letters, digits, spaces and hyphens inside labels: no quotes,
+    parentheses, colons or semicolons; no styling, no `classDef`, no markdown fences.
 - prompt: a detailed prompt for an AI image model. Style: clean, modern, flat
   illustration, white background, soft colour palette, 16:9. Few or no text
   labels. No logos, no watermarks."""

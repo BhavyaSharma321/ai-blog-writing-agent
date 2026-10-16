@@ -11,7 +11,7 @@ from blog_agent import Settings, build_graph, initial_state, run_config
 def main() -> None:
     parser = argparse.ArgumentParser(description="AI planning agent that researches and writes technical blogs.")
     parser.add_argument("topic")
-    parser.add_argument("--words", type=int, default=1500, help="Approximate total length.")
+    parser.add_argument("--words", type=int, default=1000, help="Approximate total length.")
     parser.add_argument("--recency-days", type=int, default=30, help="News window for open-book topics.")
     parser.add_argument("--max-images", type=int, default=3)
     parser.add_argument("--no-research", action="store_true")

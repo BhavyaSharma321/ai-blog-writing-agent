@@ -43,6 +43,12 @@ def merge_node(state: State, config: RunnableConfig) -> dict:
 
 
 # ---------------------------------------------------------------- 2. decide images
+def _outline(md: str, chars: int = 250) -> str:
+    """Each section's heading + opening text: enough to place images, ~5x fewer tokens than the full blog."""
+    parts = re.split(r"(?m)^(?=## )", md)
+    return "\n\n".join(p.strip()[:chars] for p in parts if p.strip().startswith("## "))
+
+
 def decide_images_node(state: State, config: RunnableConfig) -> dict:
     settings = get_settings(config)
     md = state["merged_md"]
@@ -51,20 +57,19 @@ def decide_images_node(state: State, config: RunnableConfig) -> dict:
         return {"md_with_placeholders": md, "image_specs": []}
 
     headings = [h[3:].strip() for h in md.split("\n") if h.startswith("## ") and h[3:].strip() != "References"]
+    messages = [
+        SystemMessage(
+            IMAGE_PLANNER_SYSTEM.format(
+                max_images=max_images,
+                kind_rule=IMAGE_KIND_RULES.get(settings.image_source, IMAGE_KIND_RULES["auto"]),
+            )
+        ),
+        HumanMessage("Headings:\n" + "\n".join(f"- {h}" for h in headings) + f"\n\nBlog outline:\n{_outline(md)}"),
+    ]
     try:
-        image_plan: ImagePlan = structured(settings, ImagePlan).invoke(
-            [
-                SystemMessage(
-                    IMAGE_PLANNER_SYSTEM.format(
-                        max_images=max_images,
-                        kind_rule=IMAGE_KIND_RULES.get(settings.image_source, IMAGE_KIND_RULES["auto"]),
-                    )
-                ),
-                HumanMessage("Headings:\n" + "\n".join(f"- {h}" for h in headings) + f"\n\nBlog:\n{md[:12000]}"),
-            ]
-        )
-    except Exception as exc:
-        log.warning("Image planning failed: %s", exc)
+        image_plan: ImagePlan = structured(settings, ImagePlan).invoke(messages)
+    except Exception as exc:  # images are optional: never fail the whole blog over them
+        log.warning("Image planning failed: %s", str(exc)[:300])
         return {"md_with_placeholders": md, "image_specs": []}
 
     specs, used = [], set()
