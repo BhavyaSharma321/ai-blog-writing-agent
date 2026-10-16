@@ -17,13 +17,14 @@ class MissingKeyError(RuntimeError):
 
 
 def get_llm(settings: Settings, temperature: float = 0.4) -> ChatOpenAI:
-    if not settings.openai_api_key:
-        raise MissingKeyError("OPENAI_API_KEY is not set.")
+    if not settings.llm_api_key:
+        raise MissingKeyError(f"No API key set for LLM provider '{settings.provider}'.")
     return ChatOpenAI(
-        model=settings.openai_model,
+        model=settings.model,
         temperature=temperature,
-        api_key=settings.openai_api_key,
-        max_retries=3,
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+        max_retries=5,  # free tiers (Groq/Gemini) rate-limit parallel workers
     )
 
 

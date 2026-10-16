@@ -16,7 +16,12 @@ from langchain_core.runnables import RunnableConfig
 
 load_dotenv()
 
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+# All three providers expose an OpenAI-compatible API, so one client handles them.
+PROVIDERS = {
+    "groq": {"base_url": "https://api.groq.com/openai/v1", "model": "llama-3.3-70b-versatile"},
+    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "model": "gemini-2.5-flash"},
+    "openai": {"base_url": None, "model": "gpt-4o-mini"},
+}
 DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "outputs"
 
@@ -28,8 +33,10 @@ def _env(name: str, default: str = "") -> str:
 
 @dataclass(frozen=True)
 class Settings:
+    llm_provider: str = "auto"  # auto | groq | gemini | openai
+    llm_model: str = ""  # empty -> provider default
     openai_api_key: str = ""
-    openai_model: str = DEFAULT_OPENAI_MODEL
+    groq_api_key: str = ""
     tavily_api_key: str = ""
     google_api_key: str = ""
     image_model: str = DEFAULT_IMAGE_MODEL
@@ -38,8 +45,10 @@ class Settings:
     @classmethod
     def from_env(cls, **overrides: str) -> "Settings":
         base = cls(
+            llm_provider=_env("LLM_PROVIDER", "auto").lower(),
+            llm_model=_env("LLM_MODEL"),
             openai_api_key=_env("OPENAI_API_KEY"),
-            openai_model=_env("OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+            groq_api_key=_env("GROQ_API_KEY"),
             tavily_api_key=_env("TAVILY_API_KEY"),
             google_api_key=_env("GOOGLE_API_KEY") or _env("GEMINI_API_KEY"),
             image_model=_env("GEMINI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
@@ -47,6 +56,28 @@ class Settings:
         )
         # Only apply overrides that are actually filled in.
         return replace(base, **{k: v.strip() for k, v in overrides.items() if v and v.strip()})
+
+    def _key_for(self, provider: str) -> str:
+        return {"groq": self.groq_api_key, "gemini": self.google_api_key, "openai": self.openai_api_key}[provider]
+
+    @property
+    def provider(self) -> str:
+        """Resolved text-LLM provider; 'auto' picks the first one with a key."""
+        if self.llm_provider in PROVIDERS:
+            return self.llm_provider
+        return next((p for p in ("groq", "openai", "gemini") if self._key_for(p)), "groq")
+
+    @property
+    def llm_api_key(self) -> str:
+        return self._key_for(self.provider)
+
+    @property
+    def llm_base_url(self) -> str | None:
+        return PROVIDERS[self.provider]["base_url"]
+
+    @property
+    def model(self) -> str:
+        return self.llm_model or PROVIDERS[self.provider]["model"]
 
     @property
     def can_research(self) -> bool:

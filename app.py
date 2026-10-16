@@ -12,11 +12,9 @@ from pathlib import Path
 import streamlit as st
 
 from blog_agent import Settings, build_graph, initial_state
-from blog_agent.config import DEFAULT_IMAGE_MODEL, DEFAULT_OPENAI_MODEL
+from blog_agent.config import DEFAULT_IMAGE_MODEL, PROVIDERS
 
 st.set_page_config(page_title="AI Blog Writing Agent", page_icon="✍️", layout="wide")
-
-SECRET_KEYS = ["OPENAI_API_KEY", "OPENAI_MODEL", "TAVILY_API_KEY", "GOOGLE_API_KEY", "GEMINI_IMAGE_MODEL"]
 
 STEP_LABELS = {
     "router": "🧭 Router — deciding if research is needed",
@@ -94,11 +92,27 @@ def past_runs(output_dir: str) -> list[Path]:
 
 
 # ---------------------------------------------------------------- sidebar
+PROVIDER_LABELS = {"groq": "Groq", "gemini": "Google Gemini", "openai": "OpenAI"}
+
 with st.sidebar:
     st.header("🔑 API keys")
-    openai_key = st.text_input("OpenAI API key", value=secret("OPENAI_API_KEY"), type="password")
-    tavily_key = st.text_input("Tavily API key (research)", value=secret("TAVILY_API_KEY"), type="password")
-    google_key = st.text_input("Google Gemini API key (images)", value=secret("GOOGLE_API_KEY"), type="password")
+    groq_key = st.text_input("Groq API key", value=secret("GROQ_API_KEY"), type="password")
+    google_key = st.text_input("Google Gemini API key (text + images)", value=secret("GOOGLE_API_KEY"), type="password")
+    openai_key = st.text_input("OpenAI API key (optional)", value=secret("OPENAI_API_KEY"), type="password")
+    tavily_key = st.text_input("Tavily API key (web research, optional)", value=secret("TAVILY_API_KEY"), type="password")
+
+    st.header("🧠 Writing model")
+    keyed = Settings(groq_api_key=groq_key, google_api_key=google_key, openai_api_key=openai_key)
+    default_provider = (secret("LLM_PROVIDER") or "").lower()
+    if default_provider not in PROVIDERS:
+        default_provider = keyed.provider
+    provider = st.selectbox(
+        "LLM provider",
+        list(PROVIDERS),
+        index=list(PROVIDERS).index(default_provider),
+        format_func=PROVIDER_LABELS.get,
+    )
+    llm_model = st.text_input("Model", value=secret("LLM_MODEL") or PROVIDERS[provider]["model"], key=f"model_{provider}")
 
     st.header("⚙️ Options")
     target_words = st.slider("Blog length (words)", 600, 4000, 1500, step=100)
@@ -106,16 +120,15 @@ with st.sidebar:
     recency_days = st.slider("News window (days, open-book topics)", 1, 365, 30)
     enable_images = st.toggle("Generate images (Gemini)", value=True, disabled=not google_key)
     max_images = st.slider("Max images", 0, 5, 3, disabled=not (enable_images and google_key))
-
-    with st.expander("Models"):
-        openai_model = st.text_input("OpenAI model", value=secret("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL)
-        image_model = st.text_input("Gemini image model", value=secret("GEMINI_IMAGE_MODEL") or DEFAULT_IMAGE_MODEL)
+    image_model = st.text_input("Gemini image model", value=secret("GEMINI_IMAGE_MODEL") or DEFAULT_IMAGE_MODEL)
 
 settings = Settings.from_env(
+    llm_provider=provider,
+    llm_model=llm_model,
+    groq_api_key=groq_key,
     openai_api_key=openai_key,
     tavily_api_key=tavily_key,
     google_api_key=google_key,
-    openai_model=openai_model,
     image_model=image_model,
 )
 
@@ -143,8 +156,8 @@ with st.form("topic_form"):
 if submitted:
     if not topic.strip():
         st.warning("Please enter a topic.")
-    elif not settings.openai_api_key:
-        st.error("An OpenAI API key is required (sidebar or secrets).")
+    elif not settings.llm_api_key:
+        st.error(f"Add an API key for {PROVIDER_LABELS[settings.provider]} in the sidebar (or Streamlit secrets).")
     else:
         state = initial_state(
             topic,
